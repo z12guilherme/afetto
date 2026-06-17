@@ -2,16 +2,16 @@ import { ProductList } from '@/components/builder/ProductList';
 import { BasketReview } from '@/components/builder/BasketReview';
 import { useBasketStore } from '@/store/useBasketStore';
 import { Button } from '@/components/ui/button';
-import { ShoppingBasket } from 'lucide-react';
+import { ShoppingBasket, Sparkles, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export function Builder() {
-  const { items, totalItems, totalPrice } = useBasketStore();
+  const { items, totalItems, totalPrice, basketSourceName, clearBasket } = useBasketStore();
   const [showBottomBar, setShowBottomBar] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
-      // Hide bottom bar if we are near the bottom of the page
       const isNearBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 400;
       if (items.length > 0 && !isNearBottom) {
         setShowBottomBar(true);
@@ -39,13 +39,48 @@ export function Builder() {
   return (
     <div className="bg-muted/10 min-h-[calc(100vh-4rem)] relative pb-24 lg:pb-8">
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-3xl md:text-4xl font-bold text-primary tracking-tight">Monte Sua Cesta</h1>
           <p className="text-muted-foreground mt-2 max-w-2xl">
             Selecione os produtos nas categorias abaixo, preencha os dados e finalize seu pedido com facilidade.
           </p>
         </div>
-        
+
+        {/* Banner: cesta sugerida como base */}
+        <AnimatePresence>
+          {basketSourceName && (
+            <motion.div
+              key="source-banner"
+              initial={{ opacity: 0, y: -12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -12, scale: 0.98 }}
+              transition={{ duration: 0.3 }}
+              className="mb-6 flex items-start justify-between gap-3 rounded-xl border border-secondary/30 bg-secondary/5 px-5 py-4"
+            >
+              <div className="flex items-start gap-3">
+                <Sparkles className="h-5 w-5 text-secondary mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Baseado em: <span className="text-secondary">{basketSourceName}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Esta é apenas uma sugestão. Fique à vontade para adicionar, remover ou trocar qualquer produto abaixo!
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={clearBasket}
+                title="Limpar cesta e começar do zero"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:items-start relative">
           <div className="lg:col-span-7 xl:col-span-8">
             <ProductList />

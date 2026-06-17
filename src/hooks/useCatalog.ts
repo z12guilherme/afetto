@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
+export type BasketProductItem = {
+  productId: string;
+  quantity: number;
+};
+
 export type CatalogBasket = {
   id: string;
   name: string;
@@ -9,7 +14,7 @@ export type CatalogBasket = {
   oldPrice?: number | null;
   tag?: string | null;
   image: string;
-  items: string[];
+  items: BasketProductItem[];
 };
 
 export const MOCK_CATALOG: CatalogBasket[] = [
@@ -20,7 +25,12 @@ export const MOCK_CATALOG: CatalogBasket[] = [
     oldPrice: 420.0,
     tag: 'Mais Vendida',
     image: 'https://placehold.co/400x400/0B2A5B/FFFFFF?text=Cesta+Romantica',
-    items: ['Perfume Importado', 'Rosas Vermelhas', 'Ferrero Rocher', 'Cartão']
+    items: [
+      { productId: 'perf-1', quantity: 1 },
+      { productId: 'flores-1', quantity: 1 },
+      { productId: 'choc-1', quantity: 1 },
+      { productId: 'cartao-1', quantity: 1 },
+    ]
   },
   {
     id: 'cesta-2',
@@ -28,7 +38,11 @@ export const MOCK_CATALOG: CatalogBasket[] = [
     price: 180.0,
     tag: 'Econômica',
     image: 'https://placehold.co/400x400/0B2A5B/FFFFFF?text=Cesta+Doce',
-    items: ['Pelúcia Média', 'Lindt Excellence', 'Trufas Sortidas', 'Caneca']
+    items: [
+      { productId: 'pelucia-1', quantity: 1 },
+      { productId: 'choc-2', quantity: 2 },
+      { productId: 'cartao-1', quantity: 1 },
+    ]
   },
   {
     id: 'cesta-3',
@@ -36,11 +50,15 @@ export const MOCK_CATALOG: CatalogBasket[] = [
     price: 250.0,
     tag: 'Lançamento',
     image: 'https://placehold.co/400x400/0B2A5B/FFFFFF?text=Cesta+Classic',
-    items: ['Body Splash', 'Chocolates Premium', 'Arranjo de Flores']
+    items: [
+      { productId: 'perf-2', quantity: 1 },
+      { productId: 'choc-1', quantity: 1 },
+      { productId: 'flores-2', quantity: 1 },
+    ]
   }
 ];
 
-const STORAGE_KEY = 'afetto_catalog';
+const STORAGE_KEY = 'afetto_catalog_v2'; // v2 = novo formato com productId
 
 export function useCatalog() {
   const [baskets, setBaskets] = useState<CatalogBasket[]>([]);
