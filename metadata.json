@@ -1,0 +1,6 @@
+{
+  "name": "Afetto",
+  "description": "Plataforma de presentes personalizados e cestas para datas comemorativas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
