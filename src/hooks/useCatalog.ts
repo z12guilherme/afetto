@@ -171,11 +171,47 @@ export function useCatalog() {
     }
   };
 
+  const updateBasket = async (id: string, basketData: Omit<CatalogBasket, 'id'>) => {
+    if (isSupabaseConfigured() && !id.startsWith('cesta-')) {
+      try {
+        const { data, error } = await supabase
+          .from('baskets')
+          .update(basketData)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setBaskets(prev => prev.map(b => b.id === id ? data : b));
+        toast.success('Cesta atualizada com sucesso no Supabase!');
+        return data;
+      } catch (error) {
+        console.error('Error updating basket in Supabase:', error);
+        toast.error('Erro ao atualizar cesta no banco. Tentando localmente...');
+      }
+    }
+
+    try {
+      const updatedBasket = { ...basketData, id };
+      const newBasketsList = baskets.map(b => b.id === id ? updatedBasket : b);
+      setBaskets(newBasketsList);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newBasketsList));
+      toast.success('Cesta atualizada localmente!');
+      return updatedBasket;
+    } catch (error) {
+      console.error('Error updating basket:', error);
+      toast.error('Erro ao atualizar cesta.');
+      return null;
+    }
+  };
+
   return {
     baskets,
     loading,
     refetch: fetchBaskets,
     addBasket,
+    updateBasket,
     deleteBasket
   };
 }

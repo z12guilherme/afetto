@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
-import { useCatalog, BasketProductItem } from '@/hooks/useCatalog';
+import { useCatalog, BasketProductItem, CatalogBasket } from '@/hooks/useCatalog';
 import { useProducts } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Trash2, Plus, Loader2, Minus, Package } from 'lucide-react';
+import { Trash2, Plus, Loader2, Minus, Package, Pencil, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 
 export function BasketAdmin() {
-  const { baskets, loading: loadingBaskets, addBasket, deleteBasket } = useCatalog();
+  const { baskets, loading: loadingBaskets, addBasket, updateBasket, deleteBasket } = useCatalog();
   const { products, loading: loadingProducts } = useProducts();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -49,7 +50,6 @@ export function BasketAdmin() {
     }
     const alreadyAdded = formData.items.find(i => i.productId === selectedProductId);
     if (alreadyAdded) {
-      // Incrementa a quantidade
       setFormData({
         ...formData,
         items: formData.items.map(i =>
@@ -81,6 +81,31 @@ export function BasketAdmin() {
     });
   };
 
+  const handleEditClick = (basket: CatalogBasket) => {
+    setEditingId(basket.id);
+    setFormData({
+      name: basket.name,
+      price: basket.price.toString(),
+      oldPrice: basket.oldPrice ? basket.oldPrice.toString() : '',
+      tag: basket.tag || '',
+      image: basket.image,
+      items: basket.items,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setFormData({
+      name: '',
+      price: '',
+      oldPrice: '',
+      tag: '',
+      image: '',
+      items: [],
+    });
+  };
+
   const getProductById = (id: string) => products.find(p => p.id === id);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,14 +118,21 @@ export function BasketAdmin() {
 
     setIsSubmitting(true);
 
-    await addBasket({
+    const basketData = {
       name: formData.name,
       price: parseFloat(formData.price),
       oldPrice: formData.oldPrice ? parseFloat(formData.oldPrice) : null,
       tag: formData.tag || null,
       image: formData.image || `https://placehold.co/400x400/0B2A5B/FFFFFF?text=${encodeURIComponent(formData.name)}`,
       items: formData.items,
-    });
+    };
+
+    if (editingId) {
+      await updateBasket(editingId, basketData);
+      setEditingId(null);
+    } else {
+      await addBasket(basketData);
+    }
 
     setFormData({ name: '', price: '', oldPrice: '', tag: '', image: '', items: [] });
     setIsSubmitting(false);
@@ -115,15 +147,15 @@ export function BasketAdmin() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-primary">Gestão de Cestas</h1>
         <p className="text-muted-foreground mt-2">
-          Crie cestas <span className="font-medium text-foreground">sugeridas</span> usando os produtos cadastrados. O cliente pode personalizar livremente no builder.
+          Crie ou edite cestas <span className="font-medium text-foreground">sugeridas</span> usando os produtos cadastrados.
         </p>
       </div>
 
-      <Card>
+      <Card className={editingId ? 'border-secondary/40 shadow-md bg-secondary/5' : ''}>
         <CardHeader>
-          <CardTitle>Criar Nova Cesta Sugerida</CardTitle>
+          <CardTitle>{editingId ? 'Editar Cesta Sugerida' : 'Criar Nova Cesta Sugerida'}</CardTitle>
           <CardDescription>
-            Monte uma cesta modelo selecionando produtos reais do catálogo. Ela aparecerá como sugestão para o cliente.
+            {editingId ? 'Modifique as informações e os produtos do modelo selecionado.' : 'Monte uma cesta modelo selecionando produtos reais do catálogo.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -298,19 +330,28 @@ export function BasketAdmin() {
                     );
                   })}
                   <p className="text-xs text-muted-foreground pt-1 px-1">
-                    {formData.items.length} produto(s) — Preço calculado automaticamente no pedido
+                    {formData.items.length} produto(s) no modelo
                   </p>
                 </div>
               )}
             </div>
 
-            <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">
-              {isSubmitting ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando...</>
-              ) : (
-                <><Plus className="mr-2 h-4 w-4" /> Criar Cesta Sugerida</>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={isSubmitting} className="flex-1 md:flex-initial">
+                {isSubmitting ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+                ) : editingId ? (
+                  <><Pencil className="mr-2 h-4 w-4" /> Salvar Alterações</>
+                ) : (
+                  <><Plus className="mr-2 h-4 w-4" /> Criar Cesta Sugerida</>
+                )}
+              </Button>
+              {editingId && (
+                <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                  <X className="mr-2 h-4 w-4" /> Cancelar
+                </Button>
               )}
-            </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -378,14 +419,30 @@ export function BasketAdmin() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteBasket(basket.id)}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEditClick(basket)}
+                              className="text-secondary hover:text-secondary hover:bg-secondary/10"
+                              title="Editar Cesta"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (window.confirm(`Excluir a cesta "${basket.name}"?`)) {
+                                  deleteBasket(basket.id);
+                                }
+                              }}
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Excluir Cesta"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))

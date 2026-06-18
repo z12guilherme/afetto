@@ -1,19 +1,20 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useProducts } from '@/hooks/useProducts';
+import { Product } from '@/data/products';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Trash2, Plus, Loader2 } from 'lucide-react';
+import { Trash2, Plus, Loader2, Pencil, X } from 'lucide-react';
 import { CATEGORIES, Category } from '@/data/products';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 
 export function ProductsAdmin() {
-  const { products, loading, addProduct, deleteProduct } = useProducts();
+  const { products, loading, addProduct, updateProduct, deleteProduct } = useProducts();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -37,16 +38,45 @@ export function ProductsAdmin() {
     }
   };
 
+  const handleEditClick = (product: Product) => {
+    setEditingId(product.id);
+    setFormData({
+      name: product.name,
+      price: product.price.toString(),
+      category: product.category,
+      image: product.image,
+    });
+    // Rolar até o formulário
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setFormData({
+      name: '',
+      price: '',
+      category: CATEGORIES[0] as Category,
+      image: '',
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
-    await addProduct({
+    const productData = {
       name: formData.name,
       price: parseFloat(formData.price),
       category: formData.category,
-      image: formData.image || `https://placehold.co/400x400/0B2A5B/FFFFFF?text=${formData.name}`,
-    });
+      image: formData.image || `https://placehold.co/400x400/0B2A5B/FFFFFF?text=${encodeURIComponent(formData.name)}`,
+    };
+
+    if (editingId) {
+      await updateProduct(editingId, productData);
+      setEditingId(null);
+    } else {
+      await addProduct(productData);
+    }
 
     setFormData({
       name: '',
@@ -64,15 +94,19 @@ export function ProductsAdmin() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">Gestão de Produtos</h1>
-        <p className="text-muted-foreground mt-2">Adicione ou remova produtos usando Supabase.</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">Gestão de Produtos</h1>
+          <p className="text-muted-foreground mt-2">Adicione, edite ou remova produtos usando Supabase/Local.</p>
+        </div>
       </div>
 
-      <Card>
+      <Card className={editingId ? 'border-secondary/40 shadow-md bg-secondary/5' : ''}>
         <CardHeader>
-          <CardTitle>Adicionar Novo Produto</CardTitle>
-          <CardDescription>Cadastre um novo item para os clientes usarem na cesta.</CardDescription>
+          <CardTitle>{editingId ? 'Editar Produto' : 'Adicionar Novo Produto'}</CardTitle>
+          <CardDescription>
+            {editingId ? 'Modifique os dados do produto selecionado.' : 'Cadastre um novo item para os clientes usarem na cesta.'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -154,13 +188,23 @@ export function ProductsAdmin() {
                 )}
               </div>
             </div>
-            <Button type="submit" disabled={isSubmitting} className="mt-2 w-full md:w-auto">
-              {isSubmitting ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adicionando...</>
-              ) : (
-                <><Plus className="mr-2 h-4 w-4" /> Cadastrar Produto</>
+            
+            <div className="flex gap-2 pt-2">
+              <Button type="submit" disabled={isSubmitting} className="flex-1 md:flex-initial">
+                {isSubmitting ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+                ) : editingId ? (
+                  <><Pencil className="mr-2 h-4 w-4" /> Salvar Alterações</>
+                ) : (
+                  <><Plus className="mr-2 h-4 w-4" /> Cadastrar Produto</>
+                )}
+              </Button>
+              {editingId && (
+                <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                  <X className="mr-2 h-4 w-4" /> Cancelar
+                </Button>
               )}
-            </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -203,14 +247,30 @@ export function ProductsAdmin() {
                         <TableCell>{product.category}</TableCell>
                         <TableCell>{formatPrice(product.price)}</TableCell>
                         <TableCell className="text-right">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => deleteProduct(product.id)}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => handleEditClick(product)}
+                              className="text-secondary hover:text-secondary hover:bg-secondary/10"
+                              title="Editar Produto"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => {
+                                if (window.confirm(`Excluir o produto "${product.name}"?`)) {
+                                  deleteProduct(product.id);
+                                }
+                              }}
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              title="Excluir Produto"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))

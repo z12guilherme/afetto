@@ -116,11 +116,47 @@ export function useProducts() {
     }
   };
 
+  const updateProduct = async (id: string, productData: Omit<Product, 'id'>) => {
+    if (isSupabaseConfigured() && !id.startsWith('prod-')) {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .update(productData)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setProducts(prev => prev.map(p => p.id === id ? data : p));
+        toast.success('Produto atualizado com sucesso no Supabase!');
+        return data;
+      } catch (error) {
+        console.error('Error updating product in Supabase:', error);
+        toast.error('Erro ao atualizar produto no banco. Tentando localmente...');
+      }
+    }
+
+    try {
+      const updatedProduct = { ...productData, id };
+      const newProductsList = products.map(p => p.id === id ? updatedProduct : p);
+      setProducts(newProductsList);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newProductsList));
+      toast.success('Produto atualizado localmente!');
+      return updatedProduct;
+    } catch (error) {
+      console.error('Error updating product:', error);
+      toast.error('Erro ao atualizar produto.');
+      return null;
+    }
+  };
+
   return {
     products,
     loading,
     refetch: fetchProducts,
     addProduct,
+    updateProduct,
     deleteProduct
   };
 }

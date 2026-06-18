@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useBasketStore } from '@/store/useBasketStore';
+import { useOrders } from '@/hooks/useOrders';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,17 +16,19 @@ import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 
 const checkoutSchema = z.object({
-  name: z.string().optional(),
+  name: z.string().min(2, 'Por favor, insira o nome do destinatário'),
   message: z.string().optional(),
-  date: z.string().optional(),
+  date: z.string().min(10, 'Selecione uma data de entrega válida'),
   notes: z.string().optional(),
-  zipCode: z.string().optional(),
+  zipCode: z.string().min(9, 'Insira o CEP completo (00000-000)'),
 });
 
 type CheckoutFormValues = z.infer<typeof checkoutSchema>;
 
 export function BasketReview() {
-  const { items, updateQuantity, removeItem, totalPrice, totalItems, personalization, updatePersonalization } = useBasketStore();
+  const { items, updateQuantity, removeItem, totalPrice, totalItems, personalization, updatePersonalization, clearBasket } = useBasketStore();
+  const { addOrder } = useOrders();
+  const navigate = useNavigate();
   const [shippingCost, setShippingCost] = useState(0);
   const [isCalculatingShipping, setIsCalculatingShipping] = useState(false);
   
@@ -33,28 +37,59 @@ export function BasketReview() {
     defaultValues: { ...personalization, zipCode: '' },
   });
 
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
   };
 
+  const handleZipCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '');
+    if (val.length > 8) val = val.substring(0, 8);
+    if (val.length > 5) {
+      val = `${val.substring(0, 5)}-${val.substring(5)}`;
+    }
+    form.setValue('zipCode', val, { shouldValidate: true });
+  };
+
   const calculateShipping = () => {
-    const zipCode = form.getValues('zipCode');
+    const rawZip = form.getValues('zipCode');
+    const zipCode = rawZip?.replace(/\D/g, '');
     if (!zipCode || zipCode.length < 8) {
-      toast.error('CEP inválido', { description: 'Por favor, insira um CEP válido para calcular o frete.' });
+      toast.error('CEP inválido', { description: 'Por favor, insira um CEP de 8 dígitos para calcular o frete.' });
       return;
     }
     
     setIsCalculatingShipping(true);
-    // Simulate API call for shipping calculation
+    
     setTimeout(() => {
-      const mockCost = 15.00 + (Math.random() * 20); // random between 15 and 35
-      setShippingCost(mockCost);
+      let cost = 0;
+      const prefix = zipCode.substring(0, 2);
+      const numPrefix = parseInt(prefix, 10);
+      
+      if (numPrefix >= 1 && numPrefix <= 9) {
+        cost = 15.00;
+        toast.success('Frete calculado!', { description: 'São Paulo e Grande SP: R$ 15,00' });
+      } else if (numPrefix >= 11 && numPrefix <= 19) {
+        cost = 25.00;
+        toast.success('Frete calculado!', { description: 'Interior/Litoral de São Paulo: R$ 25,00' });
+      } else if (zipCode.startsWith('2')) {
+        cost = 30.00;
+        toast.success('Frete calculado!', { description: 'Sudeste (RJ/ES): R$ 30,00' });
+      } else if (zipCode.startsWith('3')) {
+        cost = 32.00;
+        toast.success('Frete calculado!', { description: 'Sudeste (MG): R$ 32,00' });
+      } else {
+        cost = 45.00;
+        toast.success('Frete calculado!', { description: 'Outras regiões do Brasil: R$ 45,00' });
+      }
+      
+      setShippingCost(cost);
       setIsCalculatingShipping(false);
-      toast.success('Frete calculado com sucesso!');
-    }, 1000);
+    }, 800);
   };
 
-  const handleCheckout = (data: CheckoutFormValues) => {
+  const handleCheckout = async (data: CheckoutFormValues) => {
     if (items.length === 0) {
       toast.error('Sua cesta está vazia!', {
         description: 'Adicione produtos antes de finalizar.',
@@ -62,34 +97,73 @@ export function BasketReview() {
       return;
     }
 
-    // Save personalization fields
-    updatePersonalization('name', data.name || '');
+    if (shippingCost === 0) {
+      toast.error('Frete não calculado!', {
+        description: 'Por favor, calcule o frete utilizando seu CEP.',
+      });
+      return;
+    }
+
+    // Save personalization fields in store
+    updatePersonalization('name', data.name);
     updatePersonalization('message', data.message || '');
-    updatePersonalization('date', data.date || '');
+    updatePersonalization('date', data.date);
     updatePersonalization('notes', data.notes || '');
 
-    const finalTotal = totalPrice() + shippingCost;
+    const subtotal = totalPrice();
+    const finalTotal = subtotal + shippingCost;
 
-    // Format WhatsApp message
+    // Salvar pedido no banco/local
+    const savedOrder = await addOrder({
+      customer_name: data.name,
+      delivery_date: data.date,
+      card_message: data.message,
+      extra_notes: data.notes,
+      zip_code: data.zipCode,
+      shipping_cost: shippingCost,
+      subtotal: subtotal,
+      total: finalTotal,
+      items: items,
+    });
+
+    if (!savedOrder) {
+      toast.error('Erro ao finalizar pedido', {
+        description: 'Não foi possível registrar seu pedido. Tente novamente.',
+      });
+      return;
+    }
+
+    // Formatar mensagem WhatsApp
+    const whatsappNumber = import.meta.env.VITE_WHATSAPP_NUMBER || '5511999999999';
     const lines = [
       'Olá! Gostaria de solicitar a seguinte cesta personalizada:\n',
       '*Itens:*',
       ...items.map(i => `- ${i.quantity}x ${i.product.name} (${formatPrice(i.product.price * i.quantity)})`),
       '\n*Personalização:*',
-      `Para: ${data.name || 'Não informado'}`,
-      `Data de Entrega: ${data.date || 'Não informada'}`,
+      `Para: ${data.name}`,
+      `Data de Entrega: ${data.date}`,
       `Mensagem no Cartão: ${data.message || 'Nenhuma'}`,
       `Observações: ${data.notes || 'Nenhuma'}`,
-      `CEP: ${data.zipCode || 'Não informado'}`,
-      `\n*Subtotal:* ${formatPrice(totalPrice())}`,
+      `CEP: ${data.zipCode}`,
+      `\n*Subtotal:* ${formatPrice(subtotal)}`,
       `*Frete:* ${formatPrice(shippingCost)}`,
       `*Valor Total:* ${formatPrice(finalTotal)}`,
       '\nObrigado!'
     ];
 
     const message = encodeURIComponent(lines.join('\n'));
-    window.open(`https://wa.me/5511999999999?text=${message}`, '_blank');
+    
+    // Tenta abrir a aba do WhatsApp
+    window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
+
+    // Limpar o carrinho e a personalização
+    clearBasket();
+
+    // Redireciona para página de confirmação passando o pedido recém-criado
+    navigate('/pedido-confirmado', { state: { order: savedOrder } });
   };
+
+  const { onChange: onZipCodeChange, ...zipCodeReg } = form.register('zipCode');
 
   return (
     <Card className="flex flex-col h-[calc(100vh-8rem)] w-full sticky top-24 border-primary/20 shadow-lg bg-white/50 backdrop-blur-sm">
@@ -175,15 +249,21 @@ export function BasketReview() {
                   <div className="space-y-1">
                     <Label htmlFor="name">Para quem é o presente? (Nome)</Label>
                     <Input id="name" placeholder="Ex: Maria" {...form.register('name')} className="bg-background" />
+                    {form.formState.errors.name && (
+                      <p className="text-xs text-destructive mt-0.5">{form.formState.errors.name.message}</p>
+                    )}
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="message">Mensagem do Cartão</Label>
+                    <Label htmlFor="message">Mensagem do Cartão (Opcional)</Label>
                     <Input id="message" placeholder="Deixe sua mensagem de carinho..." {...form.register('message')} className="bg-background" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <Label htmlFor="date">Data da Entrega</Label>
-                      <Input id="date" type="date" {...form.register('date')} className="bg-background" />
+                      <Input id="date" type="date" min={tomorrowStr} {...form.register('date')} className="bg-background" />
+                      {form.formState.errors.date && (
+                        <p className="text-xs text-destructive mt-0.5">{form.formState.errors.date.message}</p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="notes">Observações extras</Label>
@@ -193,7 +273,16 @@ export function BasketReview() {
                   <div className="space-y-1 pt-2">
                     <Label htmlFor="zipCode">Calcular Frete (CEP)</Label>
                     <div className="flex gap-2">
-                      <Input id="zipCode" placeholder="00000-000" {...form.register('zipCode')} className="bg-background flex-1" />
+                      <Input 
+                        id="zipCode" 
+                        placeholder="00000-000" 
+                        {...zipCodeReg}
+                        onChange={(e) => {
+                          onZipCodeChange(e);
+                          handleZipCodeChange(e);
+                        }}
+                        className="bg-background flex-1" 
+                      />
                       <Button 
                         type="button" 
                         variant="secondary" 
@@ -203,6 +292,9 @@ export function BasketReview() {
                         {isCalculatingShipping ? 'Calculando...' : 'Calcular'}
                       </Button>
                     </div>
+                    {form.formState.errors.zipCode && (
+                      <p className="text-xs text-destructive mt-0.5">{form.formState.errors.zipCode.message}</p>
+                    )}
                   </div>
                 </div>
               </form>
